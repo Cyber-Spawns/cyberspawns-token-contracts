@@ -78,11 +78,6 @@ contract NanoDose is ERC20Pausable {
         payable(msg.sender).transfer(balance);
     }
 
-    function withdraw(address tokenAddress) external onlyOwner {
-        IERC20 token = IERC20(tokenAddress);
-        uint256 balance = token.balanceOf(address(this));
-        token.safeTransfer(_msgSender(), balance);        
-    }
 
     
 }
