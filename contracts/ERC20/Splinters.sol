@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.7.0;
+pragma solidity 0.8.0;
 import "./extensions/ERC20Pausable.sol";
 import "./ERC20.sol";
 import "./interfaces/IERC20.sol";
@@ -75,7 +75,7 @@ contract Splinters is ERC20Pausable {
 
       function withdraw() external onlyOwner {
         uint balance = address(this).balance;
-        msg.sender.transfer(balance);
+        payable(msg.sender).transfer(balance);
     }
 
     function withdraw(address tokenAddress) external onlyOwner {
