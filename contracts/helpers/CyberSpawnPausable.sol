@@ -2,8 +2,7 @@
 
 pragma solidity 0.8.0;
 
-import "./Context.sol";
-import "./Ownable.sol";
+import "./CyberSpawnAccessControl.sol";
 
 /**
  * @dev Contract module which allows children to implement an emergency stop
@@ -14,7 +13,7 @@ import "./Ownable.sol";
  * the functions of your contract. Note that they will not be pausable by
  * simply including this module, only once the modifiers are put in place.
  */
-abstract contract Pausable is Context, Ownable {
+contract CyberSpawnPausable is CyberSpawnAccessControl {
     /**
      * @dev Emitted when the pause is triggered by `account`.
      */
@@ -72,7 +71,7 @@ abstract contract Pausable is Context, Ownable {
      *
      * - The contract must not be paused.
      */
-    function _pause() internal virtual onlyOwner whenNotPaused {
+    function _pause() internal virtual onlyAdmin whenNotPaused {
         _paused = true;
         emit Paused(_msgSender());
     }
@@ -84,7 +83,7 @@ abstract contract Pausable is Context, Ownable {
      *
      * - The contract must be paused.
      */
-    function _unpause() internal virtual onlyOwner whenPaused {
+    function _unpause() internal virtual onlyAdmin whenPaused {
         _paused = false;
         emit Unpaused(_msgSender());
     }
