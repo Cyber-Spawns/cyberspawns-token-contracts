@@ -9,26 +9,13 @@ const { utils } = require("ethers");
 const PRIVATE_KEY_1 = process.env.PRIVATE_KEY_1;
 const PRIVATE_KEY_2 = process.env.PRIVATE_KEY_2;
 
-const PRIVATE_KEY_GANACHE_1 = process.env.PRIVATE_KEY_GANACHE_1;
-const PRIVATE_KEY_GANACHE_2 = process.env.PRIVATE_KEY_GANACHE_2;
-
 /**
  * @type import('hardhat/config').HardhatUserConfig
  */
 module.exports = {
   defaultNetwork: "localhost",
-  solidity: {
-    compilers: [
-      {
-        version: "0.8.0",
-      },
-    ],
-    optimizer: {
-      enabled: true,
-      runs: 200,
-    },
-  },
   networks: {
+    hardhat: {},
     testnet: {
       url: "https://data-seed-prebsc-1-s1.binance.org:8545",
       chainId: 97,
@@ -47,12 +34,16 @@ module.exports = {
       chainId: 56,
       accounts: [`${PRIVATE_KEY_1}`],
     },
-    hardhat: {
-      // forking: {
-      //   url: `https://bsc-dataseed.binance.org/`,
-      //   blockNumber: 6674768,
-      // },
-      blockGasLimit: 12000000,
+  },
+  solidity: {
+    compilers: [
+      {
+        version: "0.8.0",
+      },
+    ],
+    optimizer: {
+      enabled: false,
+      runs: 200,
     },
   },
   etherscan: {
