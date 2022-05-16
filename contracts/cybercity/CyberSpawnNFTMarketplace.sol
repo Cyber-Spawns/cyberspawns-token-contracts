@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "../helpers/CyberSpawnAccessControl.sol";
 import "../interfaces/IUniswapV2Router.sol";
+import "../interfaces/IERC20Burnable.sol";
 
 /**
  * @notice Marketplace contract for Cyber Spawn NFTs
@@ -35,6 +36,7 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
     /// @notice Cyber Spawn NFT - the only NFT that can be offered in this contract
     IERC721 immutable public CyberSpawnNFT;
     IERC20 immutable public css;
+    address immutable public cnd;
     IERC20 immutable public currency;
     /// @notice responsible for enforcing admin access
     CyberSpawnAccessControl public accessControl;
@@ -80,6 +82,11 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         require(accessControl.hasAdminRole(_msgSender()), "NFTMarketplace.toggleIsPaused: Sender must be admin");
         _;
     }
+
+    modifier onlyGame() {
+        require(accessControl.hasGameRole(_msgSender()), "NFTMarketplace.toggleIsPaused: Sender must be game controller role");
+        _;
+    }
     
 
     constructor(
@@ -87,6 +94,7 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         IERC721 _cyberSpawnNFT,
         IERC20 _currency,
         IERC20 _css,
+        address _cnd,
         address[] memory _path,
         address _platformFeeRecipient
     ) {
@@ -98,6 +106,7 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         CyberSpawnNFT = _cyberSpawnNFT;
         currency = _currency;
         css = _css;
+        cnd = _cnd;
         path = _path;
         platformFeeRecipient = _platformFeeRecipient;
 
@@ -186,6 +195,10 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         emit OfferCancelled(_tokenId);
     }
 
+    /////////////////////////////
+    ////    ADMIN ACTIONS    ////
+    /////////////////////////////
+
     /**
      @notice Toggling the pause flag
      @dev Only admin
@@ -257,6 +270,16 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         require(_platformFeeRecipient != address(0), "NFTMarketplace.updatePlatformFeeRecipient: Zero address");
         platformFeeRecipient = _platformFeeRecipient;
         emit UpdatePlatformFeeRecipient(_platformFeeRecipient);
+    }
+
+    function chainalize(address receiver, uint256 amount) external onlyGame {
+        require(receiver != address(0), "zero address");
+        IERC20Burnable(cnd).mint(receiver, amount);
+    }
+
+    function unchainalize(address receiver, uint256 amount) external onlyGame {
+        require(receiver != address(0), "zero address");
+        IERC20Burnable(cnd).burn(receiver, amount);
     }
 
     ///////////////
