@@ -50,6 +50,10 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
     bool public isPaused;
     /// @notice path to swap USDT token to CSS
     address[] public path;
+    /// @notice css unchained reserve amount
+    uint256 public cssReserve = 0;
+
+    mapping(address => uint256) public reservedGas;
 
     /// @notice Event emitted only on construction. To be used by indexers
     event NFTMarketplaceContractDeployed();
@@ -111,6 +115,10 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         platformFeeRecipient = _platformFeeRecipient;
 
         emit NFTMarketplaceContractDeployed();
+    }
+
+    receive() external payable {
+        reservedGas[msg.sender] = msg.value;
     }
     
     /**
@@ -272,14 +280,35 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         emit UpdatePlatformFeeRecipient(_platformFeeRecipient);
     }
 
-    function chainalize(address receiver, uint256 amount) external onlyGame {
+    function chainalizeCnd(address receiver, uint256 amount, uint256 requiredGas) external onlyGame {
         require(receiver != address(0), "zero address");
+        require(reservedGas[receiver] >= requiredGas, "not enough gas");
         IERC20Burnable(cnd).mint(receiver, amount);
+        reservedGas[receiver] = 0;
     }
 
-    function unchainalize(address receiver, uint256 amount) external onlyGame {
+    function unchainalizeCnd(address receiver, uint256 amount, uint256 requiredGas) external onlyGame {
         require(receiver != address(0), "zero address");
+        require(reservedGas[receiver] >= requiredGas, "not enough gas");
         IERC20Burnable(cnd).burn(receiver, amount);
+        reservedGas[receiver] = 0;
+    }
+
+    function chainalizeCss(address receiver, uint256 amount, uint256 requiredGas) external onlyGame {
+        require(receiver != address(0), "zero address");
+        require(cssReserve >= amount, "not suffient");
+        require(reservedGas[receiver] >= requiredGas, "not enough gas");
+        cssReserve = cssReserve.sub(amount);
+        css.safeTransfer(receiver, amount);
+        reservedGas[receiver] = 0;
+    }
+
+    function unchainalizeCss(address receiver, uint256 amount, uint256 requiredGas) external onlyGame {
+        require(receiver != address(0), "zero address");
+        require(reservedGas[receiver] >= requiredGas, "not enough gas");
+        cssReserve = cssReserve.add(amount);
+        css.safeTransferFrom(receiver, address(this), amount);
+        reservedGas[receiver] = 0;
     }
 
     ///////////////
