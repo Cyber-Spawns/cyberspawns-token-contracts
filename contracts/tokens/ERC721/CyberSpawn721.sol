@@ -51,8 +51,8 @@ contract CyberSpawn721 is ERC721URIStorage {
         _tokenIds.increment();
         uint256 newItemId = _tokenIds.current();
         spawnType[newItemId] = _spawnType;
-        _setTokenURI(newItemId, metadataURI);
         _mint(recipient, newItemId);
+        _setTokenURI(newItemId, metadataURI);
         return newItemId;
     }
 
@@ -80,8 +80,8 @@ contract CyberSpawn721 is ERC721URIStorage {
         return _paused;
     }
 
-    function baseTokenURI() external pure returns (string memory) {
-        return "ipfs://";
+    function _baseURI() internal view override returns (string memory) {
+        return baseUri;
     }
 
 }

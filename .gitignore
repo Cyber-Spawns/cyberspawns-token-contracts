@@ -22,6 +22,7 @@ package-lock.json
 !.yarn/versions
 artifacts/
 build/
+flatten/
 cache/
 coverage/
 dist/
