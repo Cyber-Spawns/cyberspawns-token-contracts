@@ -197,7 +197,6 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         // Check valid and not resulted
         Offer storage offer = offers[_tokenId];
         require(offer.price != 0, "NFTMarketplace.cancelOffer: Offer does not exist");
-        require(_getNow() <= offer.endTime, "NFTMarketplace.cancelOffer: Offer already closed");
         // Remove offer
         delete offers[_tokenId];
         emit OfferCancelled(_tokenId);
