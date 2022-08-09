@@ -65,7 +65,10 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
     );
 
     event AuctionCreated(
-        uint256 indexed tokenId
+        uint256 indexed tokenId,
+        uint256 reservePrice,
+        uint256 startTimestamp,
+        uint256 endTimestamp
     );
 
     event UpdateAuctionEndTime(
@@ -534,6 +537,6 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         resulted : false
         });
 
-        emit AuctionCreated(_tokenId);
+        emit AuctionCreated(_tokenId, _reservePrice, _startTimestamp, _endTimestamp);
     }
 }
