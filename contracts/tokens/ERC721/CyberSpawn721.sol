@@ -18,7 +18,7 @@ contract CyberSpawn721 is ERC721URIStorage {
     string public baseUri;
     mapping(uint256 => uint8) public spawnType;
 
-    event Minted(uint256 indexed tokenId, address indexed minter, uint8 spawnType, string metadataURI);
+    event Minted(uint256 indexed tokenId, address indexed recipient, uint8 spawnType, string metadataURI);
     event Paused(address account);
     event Unpaused(address account);
     event AccessControlUpdated(address accessControl);
@@ -55,7 +55,7 @@ contract CyberSpawn721 is ERC721URIStorage {
         _mint(recipient, newItemId);
         _setTokenURI(newItemId, metadataURI);
 
-        emit Minted(newItemId, msg.sender, _spawnType, metadataURI);
+        emit Minted(newItemId, recipient, _spawnType, metadataURI);
 
         return newItemId;
     }
