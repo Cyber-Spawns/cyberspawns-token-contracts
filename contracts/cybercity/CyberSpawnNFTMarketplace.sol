@@ -21,6 +21,7 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
 
     /// @notice Parameters of a marketplace offer
     struct Offer {
+        uint256 offerId;
         uint256 price;
         uint256 startTime;
         uint256 endTime;
@@ -31,6 +32,7 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
 
     address public constant uniswapRouter = address(0x10ED43C718714eb63d5aA57B78B54704E256024E);
 
+    uint256 public counter;
     /// @notice Cyber Spawn NFT Token ID -> Offer Parameters
     mapping(uint256 => Offer) public offers;
     /// @notice Cyber Spawn NFT - the only NFT that can be offered in this contract
@@ -59,22 +61,24 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
     event NFTMarketplaceContractDeployed();
     event PauseToggled(bool isPaused);
     event OfferCreated(
+        uint256 indexed offerId,
         uint256 indexed tokenId,
         address indexed owner,
         uint256 price
     );
     event UpdateAccessControls(address indexed accessControl);
     event UpdateMarketplacePlatformFee(uint256 platformFee);
-    event UpdateOfferSalePrice(uint256 indexed tokenId, uint256 price);
+    event UpdateOfferSalePrice(uint256 indexed offerId, uint256 indexed tokenId, uint256 price);
     event UpdatePlatformFeeRecipient(address platformFeeRecipient);
     event OfferPurchased(
+        uint256 indexed offerId,
         uint256 indexed tokenId,
         address indexed buyer,
         address paymentToken,
         uint256 paymentAmount,
         uint256 feeAmount
     );
-    event OfferCancelled(uint256 indexed tokenId);
+    event OfferCancelled(uint256 indexed offerId, uint256 indexed tokenId);
     event UpdateDiscountRate(uint256 discount);
 
     modifier whenNotPaused() {
@@ -179,9 +183,9 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         // Transfer the token to the purchaser
         CyberSpawnNFT.safeTransferFrom(CyberSpawnNFT.ownerOf(_tokenId), _msgSender(), _tokenId);
         
+        emit OfferPurchased(offer.offerId, _tokenId, _msgSender(), paymentToken, payAmount, fee);
         //Remove offer
         delete offers[_tokenId];
-        emit OfferPurchased(_tokenId, _msgSender(), paymentToken, payAmount, fee);
     }
     /**
      @notice Cancels an inflight and un-resulted offer
@@ -197,9 +201,10 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         // Check valid and not resulted
         Offer storage offer = offers[_tokenId];
         require(offer.price != 0, "NFTMarketplace.cancelOffer: Offer does not exist");
+        
+        emit OfferCancelled(offer.offerId, _tokenId);
         // Remove offer
         delete offers[_tokenId];
-        emit OfferCancelled(_tokenId);
     }
 
     /////////////////////////////
@@ -254,7 +259,7 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
     function updateOfferSalePrice(uint256 _tokenId, uint256 _salePrice) external onlyAdmin {
         
         offers[_tokenId].price = _salePrice;
-        emit UpdateOfferSalePrice(_tokenId, _salePrice);
+        emit UpdateOfferSalePrice(offers[_tokenId].offerId, _tokenId, _salePrice);
     }
 
     /**
@@ -320,9 +325,10 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
     function getOffer(uint256 _tokenId)
     external
     view
-    returns (uint256 _usdtPrice, uint256 _startTime, uint256 _endTime) {
+    returns (uint256 offerId, uint256 _usdtPrice, uint256 _startTime, uint256 _endTime) {
         Offer storage offer = offers[_tokenId];
         return (
+            offer.offerId,
             offer.price,
             offer.startTime,
             offer.endTime
@@ -359,14 +365,15 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         uint256 _startTimestamp,
         uint256 _endTimestamp
     ) private {
-        // Ensure a token cannot be re-listed if previously successfully sold
         require(offers[_tokenId].startTime == 0, "NFTMarketplace.createOffer: Cannot duplicate current offer");
         // Setup the new offer
+        counter++;
         offers[_tokenId] = Offer({
+            offerId: counter,
             price: _usdtPrice,
             startTime : _startTimestamp,
             endTime : _endTimestamp
         });
-        emit OfferCreated(_tokenId, CyberSpawnNFT.ownerOf(_tokenId), _usdtPrice);
+        emit OfferCreated(counter, _tokenId, CyberSpawnNFT.ownerOf(_tokenId), _usdtPrice);
     }
 }

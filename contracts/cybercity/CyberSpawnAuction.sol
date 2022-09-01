@@ -17,10 +17,10 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
 
     /// @notice Parameters of an auction
     struct Auction {
+        uint256 auctionId;
         uint256 reservePrice;
         uint256 startTime;
         uint256 endTime;
-        bool resulted;
     }
 
     /// @notice Information about the sender that placed a bit on an auction
@@ -41,6 +41,8 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
 
     /// @notice NFT - the only NFT that can be auctioned in this contract
     IERC721 public CyberSpawnNft;
+
+    uint256 public counter;
 
     /// @notice responsible for enforcing admin access
     CyberSpawnAccessControl public accessControl;
@@ -65,6 +67,7 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
     );
 
     event AuctionCreated(
+        uint256 indexed auctionId,
         uint256 indexed tokenId,
         uint256 reservePrice,
         uint256 startTimestamp,
@@ -72,16 +75,19 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
     );
 
     event UpdateAuctionEndTime(
+        uint256 indexed auctionId,
         uint256 indexed tokenId,
         uint256 endTime
     );
 
     event UpdateAuctionStartTime(
+        uint256 indexed auctionId,
         uint256 indexed tokenId,
         uint256 startTime
     );
 
     event UpdateAuctionReservePrice(
+        uint256 indexed auctionId,
         uint256 indexed tokenId,
         uint256 reservePrice
     );
@@ -103,29 +109,21 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
     );
 
     event BidPlaced(
+        uint256 indexed auctionId,
         uint256 indexed tokenId,
-        address indexed bidder,
-        uint256 bid
-    );
-
-    event BidWithdrawn(
-        uint256 indexed tokenId,
-        address indexed bidder,
-        uint256 bid
-    );
-
-    event BidRefunded(
         address indexed bidder,
         uint256 bid
     );
 
     event AuctionResulted(
+        uint256 indexed auctionId,
         uint256 indexed tokenId,
         address indexed winner,
         uint256 winningBid
     );
 
     event AuctionCancelled(
+        uint256 indexed auctionId,
         uint256 indexed tokenId
     );
 
@@ -227,7 +225,7 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         highestBid.bid = bidAmount;
         highestBid.lastBidTime = _getNow();
 
-        emit BidPlaced(_tokenId, _msgSender(), bidAmount);
+        emit BidPlaced(auction.auctionId, _tokenId, _msgSender(), bidAmount);
     }
 
     /**
@@ -254,9 +252,6 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         // Check the auction has ended
         require(_getNow() > auction.endTime, "NFTAuction.resultAuction: The auction has not ended");
 
-        // Ensure auction not already resulted
-        require(!auction.resulted, "NFTAuction.resultAuction: auction already resulted");
-
         // Ensure this contract is approved to move the token
         require(CyberSpawnNft.isApprovedForAll(_msgSender(), address(this)), "NFTAuction.resultAuction: auction not approved");
 
@@ -270,9 +265,6 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
 
         // Ensure there is a winner
         require(winner != address(0), "NFTAuction.resultAuction: no open bids");
-
-        // Result the auction
-        auctions[_tokenId].resulted = true;
 
         // Clean up the highest bid
         delete highestBids[_tokenId];
@@ -290,7 +282,10 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         // Transfer the token to the winner
         CyberSpawnNft.safeTransferFrom(CyberSpawnNft.ownerOf(_tokenId), winner, _tokenId);
 
-        emit AuctionResulted(_tokenId, winner, winningBid);
+        emit AuctionResulted(auctions[_tokenId].auctionId, _tokenId, winner, winningBid);
+        
+        // Remove auction and top bidder
+        delete auctions[_tokenId];
     }
     
     /**
@@ -311,9 +306,6 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         // Check auction is real
         require(auction.endTime > 0, "NFTAuction.cancelAuction: Auction does not exist");
 
-        // Check auction not already resulted
-        require(!auction.resulted, "NFTAuction.cancelAuction: auction already resulted");
-
         // refund existing top bidder if found
         HighestBid storage highestBid = highestBids[_tokenId];
         if (highestBid.bidder != address(0)) {
@@ -326,7 +318,7 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         // Remove auction and top bidder
         delete auctions[_tokenId];
 
-        emit AuctionCancelled(_tokenId);
+        emit AuctionCancelled(auction.auctionId, _tokenId);
     }
 
     /**
@@ -349,7 +341,7 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         );
 
         auctions[_tokenId].reservePrice = _reservePrice;
-        emit UpdateAuctionReservePrice(_tokenId, _reservePrice);
+        emit UpdateAuctionReservePrice(auctions[_tokenId].auctionId, _tokenId, _reservePrice);
     }
 
     /**
@@ -360,6 +352,7 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
      @param _startTime New start time (unix epoch in seconds)
      */
     function updateAuctionStartTime(uint256 _tokenId, uint256 _startTime) external {
+        require(_startTime > 0, "start time can not be zero");
         // Check owner of the token is the creator and approved
         require(
             CyberSpawnNft.ownerOf(_tokenId) == _msgSender(),
@@ -370,9 +363,8 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
             auctions[_tokenId].endTime > 0,
             "NFTAuction.updateAuctionStartTime: No Auction exists"
         );
-
         auctions[_tokenId].startTime = _startTime;
-        emit UpdateAuctionStartTime(_tokenId, _startTime);
+        emit UpdateAuctionStartTime(auctions[_tokenId].auctionId, _tokenId, _startTime);
     }
 
     /**
@@ -402,7 +394,7 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         );
 
         auctions[_tokenId].endTime = _endTimestamp;
-        emit UpdateAuctionEndTime(_tokenId, _endTimestamp);
+        emit UpdateAuctionEndTime(auctions[_tokenId].auctionId, _tokenId, _endTimestamp);
     }
 
     //////////
@@ -474,13 +466,13 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
     function getAuction(uint256 _tokenId)
     external
     view
-    returns (uint256 _reservePrice, uint256 _startTime, uint256 _endTime, bool _resulted) {
+    returns (uint256 auctionId, uint256 _reservePrice, uint256 _startTime, uint256 _endTime) {
         Auction storage auction = auctions[_tokenId];
         return (
-        auction.reservePrice,
-        auction.startTime,
-        auction.endTime,
-        auction.resulted
+            auction.auctionId,
+            auction.reservePrice,
+            auction.startTime,
+            auction.endTime
         );
     }
 
@@ -522,21 +514,21 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         uint256 _startTimestamp,
         uint256 _endTimestamp
     ) private {
-        // Ensure a token cannot be re-listed if previously successfully sold
-        require(auctions[_tokenId].endTime == 0, "NFTAuction.createAuction: Cannot relist");
+        require(auctions[_tokenId].startTime == 0, "NFTAuction.createAuction: Cannot relist");
 
         // Check end time not before start time and that end is in the future
         require(_endTimestamp > _startTimestamp, "NFTAuction.createAuction: End time must be greater than start");
         require(_endTimestamp > _getNow(), "NFTAuction.createAuction: End time passed. Nobody can bid.");
 
         // Setup the auction
+        counter++;
         auctions[_tokenId] = Auction({
-        reservePrice : _reservePrice,
-        startTime : _startTimestamp,
-        endTime : _endTimestamp,
-        resulted : false
+            auctionId: counter,
+            reservePrice : _reservePrice,
+            startTime : _startTimestamp,
+            endTime : _endTimestamp
         });
 
-        emit AuctionCreated(_tokenId, _reservePrice, _startTimestamp, _endTimestamp);
+        emit AuctionCreated(counter, _tokenId, _reservePrice, _startTimestamp, _endTimestamp);
     }
 }
