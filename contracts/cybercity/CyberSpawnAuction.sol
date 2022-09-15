@@ -314,11 +314,11 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
             // Clear up highest bid
             delete highestBids[_tokenId];
         }
+
+        emit AuctionCancelled(auction.auctionId, _tokenId);
         
         // Remove auction and top bidder
         delete auctions[_tokenId];
-
-        emit AuctionCancelled(auction.auctionId, _tokenId);
     }
 
     /**
