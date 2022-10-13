@@ -2,5 +2,5 @@
 pragma solidity 0.8.0;
 
 interface ICyberSpawnNFTMarketplace {
-  function createOffer(uint256 tokenId, uint256 cssPrice, uint256 usdtPrice) external;
+  function getOffer(uint256 tokenId) external view returns (uint256, uint256, uint256, uint256);
 }

@@ -8,9 +8,11 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "../helpers/CyberSpawnAccessControl.sol";
+import "../interfaces/ICyberSpawnAccessControl.sol";
+import "../interfaces/ICyberCity.sol";
 import "../interfaces/IUniswapV2Router.sol";
 import "../interfaces/IERC20Burnable.sol";
+import "../interfaces/ICyberSpawnNFTAuction.sol";
 
 /**
  * @notice Marketplace contract for Cyber Spawn NFTs
@@ -40,12 +42,9 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
     IERC20 immutable public css;
     address immutable public cnd;
     IERC20 immutable public currency;
-    /// @notice responsible for enforcing admin access
-    CyberSpawnAccessControl public accessControl;
+    address immutable public cybercity;
     /// @notice platform fee amount
     uint256 public platformFee = 100e18;
-    /// @notice where to send platform fee funds to
-    address public platformFeeRecipient;
     /// @notice platform fee discount rate
     uint256 public discount = 5_000;
     /// @notice for pausing marketplace functionalities
@@ -87,36 +86,25 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
     }
 
     modifier onlyAdmin() {
-        require(accessControl.hasAdminRole(_msgSender()), "NFTMarketplace.toggleIsPaused: Sender must be admin");
+        require(ICyberSpawnAccessControl(ICyberCity(cybercity).accessControl()).hasAdminRole(_msgSender()), "not admin");
         _;
     }
 
     modifier onlyGame() {
-        require(accessControl.hasGameRole(_msgSender()), "NFTMarketplace.toggleIsPaused: Sender must be game controller role");
+        require(ICyberSpawnAccessControl(ICyberCity(cybercity).accessControl()).hasGameRole(_msgSender()), "not game controller role");
         _;
     }
     
 
-    constructor(
-        CyberSpawnAccessControl _accessControl,
-        IERC721 _cyberSpawnNFT,
-        IERC20 _currency,
-        IERC20 _css,
-        address _cnd,
-        address[] memory _path,
-        address _platformFeeRecipient
-    ) {
-        require(address(_accessControl) != address(0), "NFTMarketplace: Invalid Access Controls");
-        require(address(_cyberSpawnNFT) != address(0), "NFTMarketplace: Invalid NFT");
-        require(address(_css) != address(0), "NFTMarketplace: Invalid token address");
-        require(_platformFeeRecipient != address(0), "NFTMarketplace: Invalid Platform Fee Recipient");
-        accessControl = _accessControl;
-        CyberSpawnNFT = _cyberSpawnNFT;
-        currency = _currency;
-        css = _css;
-        cnd = _cnd;
-        path = _path;
-        platformFeeRecipient = _platformFeeRecipient;
+    constructor(address _cybercity) {
+        require(address(_cybercity) != address(0), "NFTMarketplace: Invalid CyberCity");
+        
+        cybercity = _cybercity;
+        CyberSpawnNFT = IERC721(ICyberCity(_cybercity).cyberSpawnNft());
+        currency = IERC20(ICyberCity(_cybercity).currency());
+        css = IERC20(ICyberCity(_cybercity).css());
+        cnd = ICyberCity(_cybercity).cnd();
+        path = [ICyberCity(_cybercity).currency(), ICyberCity(_cybercity).css()];
 
         emit NFTMarketplaceContractDeployed();
     }
@@ -141,6 +129,9 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
             CyberSpawnNFT.ownerOf(_tokenId) == _msgSender() && CyberSpawnNFT.isApprovedForAll(_msgSender(), address(this)),
             "CyberSpawnNFTMarketplace.createOffer: Not owner and/or contract not approved"
         );
+        address auction = ICyberCity(cybercity).auction();
+        (uint256 auctionId, , , ) = ICyberSpawnNFTAuction(auction).getAuction(_tokenId);
+        require(auctionId == 0, "already on sale on auction");
         require(_usdtPrice > 0, "invalid price");
         _createOffer(
             _tokenId,
@@ -178,7 +169,7 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
             require(false, "invalid currency");
         }
         IERC20(paymentToken).safeTransferFrom(_msgSender(), CyberSpawnNFT.ownerOf(_tokenId), payAmount);
-        css.safeTransferFrom(_msgSender(), platformFeeRecipient, fee);
+        css.safeTransferFrom(_msgSender(), ICyberCity(cybercity).feeAddress(), fee);
 
         // Transfer the token to the purchaser
         CyberSpawnNFT.safeTransferFrom(CyberSpawnNFT.ownerOf(_tokenId), _msgSender(), _tokenId);
@@ -260,28 +251,6 @@ contract CyberSpawnNFTMarketplace is Context, ReentrancyGuard {
         
         offers[_tokenId].price = _salePrice;
         emit UpdateOfferSalePrice(offers[_tokenId].offerId, _tokenId, _salePrice);
-    }
-
-    /**
-     @notice Method for updating the access controls contract used by the NFT
-     @dev Only admin
-     @param _accessControl Address of the new access controls contract (Cannot be zero address)
-     */
-    function updateAccessControls(CyberSpawnAccessControl _accessControl) external onlyAdmin {
-        require(address(_accessControl) != address(0), "NFTMarketplace.updateAccessControls: Zero Address");
-        accessControl = _accessControl;
-        emit UpdateAccessControls(address(_accessControl));
-    }
-
-    /**
-     @notice Method for updating platform fee address
-     @dev Only admin
-     @param _platformFeeRecipient address the address to sends the funds to
-     */
-    function updatePlatformFeeRecipient(address _platformFeeRecipient) external onlyAdmin {
-        require(_platformFeeRecipient != address(0), "NFTMarketplace.updatePlatformFeeRecipient: Zero address");
-        platformFeeRecipient = _platformFeeRecipient;
-        emit UpdatePlatformFeeRecipient(_platformFeeRecipient);
     }
 
     function chainalizeCnd(address receiver, uint256 amount, uint256 requiredGas) external onlyGame {

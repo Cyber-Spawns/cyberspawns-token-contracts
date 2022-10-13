@@ -7,7 +7,9 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "../helpers/CyberSpawnAccessControl.sol";
+import "../interfaces/ICyberSpawnAccessControl.sol";
+import "../interfaces/ICyberCity.sol";
+import "../interfaces/ICyberSpawnNFTMarketplace.sol";
 
 /**
  * @notice Primary sale auction contract for Cyber Spawn NFTs
@@ -31,7 +33,8 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
     }
 
     uint256 constant public MAX_BPS = 10_000;
-    IERC20 immutable public paymentToken;
+    address immutable public cybercity;
+    IERC20 immutable public currency;
 
     /// @notice NFT Token ID -> Auction Parameters
     mapping(uint256 => Auction) public auctions;
@@ -44,17 +47,11 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
 
     uint256 public counter;
 
-    /// @notice responsible for enforcing admin access
-    CyberSpawnAccessControl public accessControl;
-
     /// @notice globally and across all auctions, the amount by which a bid has to increase
     uint256 public minBidIncrement = 0.1 ether;
 
     /// @notice global platform fee, assumed to always be to 1 decimal place i.e. 200 = 2.0%
     uint256 public platformFee = 200;
-
-    /// @notice where to send platform fee funds to
-    address public platformFeeRecipient;
 
     /// @notice for switching off auction creations, bids and withdrawals
     bool public isPaused;
@@ -133,27 +130,17 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
     }
 
     modifier onlyAdmin {
-        require(accessControl.hasAdminRole(_msgSender()), "not admin");
+        require(ICyberSpawnAccessControl(ICyberCity(cybercity).accessControl()).hasAdminRole(_msgSender()), "not admin");
         _;
     }
 
-    constructor(
-        CyberSpawnAccessControl _accessControl,
-        IERC721 _CyberSpawnNft,
-        IERC20 _paymentToken,
-        address _platformFeeRecipient
-    ) {
+    constructor(address _cybercity) {
+        require(_cybercity != address(0), "NFTAuction: Invalid CyberCity");
+
+        cybercity = _cybercity;
+        CyberSpawnNft = IERC721(ICyberCity(_cybercity).cyberSpawnNft());
+        currency = IERC20(ICyberCity(_cybercity).currency());
         
-        require(address(_accessControl) != address(0), "NFTAuction: Invalid Access Controls");
-        require(address(_CyberSpawnNft) != address(0), "NFTAuction: Invalid NFT");
-        require(address(_paymentToken) != address(0), "NFTAuction: Invalid token address");
-        require(_platformFeeRecipient != address(0), "NFTAuction: Invalid Platform Fee Recipient");
-
-        accessControl = _accessControl;
-        CyberSpawnNft = _CyberSpawnNft;
-        paymentToken = _paymentToken;
-        platformFeeRecipient = _platformFeeRecipient;
-
         emit NFTAuctionContractDeployed();
     }
 
@@ -179,6 +166,10 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
             CyberSpawnNft.ownerOf(_tokenId) == _msgSender() && CyberSpawnNft.isApprovedForAll(_msgSender(), address(this)),
             "NFTAuction.createAuction: Not owner and or contract not approved"
         );
+        
+        address marketplace = ICyberCity(cybercity).marketplace();
+        (uint256 offerId, , , ) = ICyberSpawnNFTMarketplace(marketplace).getOffer(_tokenId);
+        require(offerId == 0, "already on sale on marketplace");
 
         _createAuction(
             _tokenId,
@@ -213,11 +204,11 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         HighestBid storage highestBid = highestBids[_tokenId];
         uint256 minBidRequired = highestBid.bid + minBidIncrement;
         require(bidAmount >= minBidRequired, "NFTAuction.placeBid: Failed to outbid highest bidder");
-        paymentToken.safeTransferFrom(_msgSender(), address(this), bidAmount);
+        currency.safeTransferFrom(_msgSender(), address(this), bidAmount);
 
         // Refund existing top bidder if found
         if (highestBid.bidder != address(0)) {
-            paymentToken.safeTransfer(highestBid.bidder, highestBid.bid);
+            currency.safeTransfer(highestBid.bidder, highestBid.bid);
         }
         
         // assign top bidder and bid time
@@ -274,10 +265,10 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         uint256 pFee = winningBid * platformFee / MAX_BPS;
 
         // Send platform fee
-        paymentToken.safeTransfer(platformFeeRecipient, pFee);
+        currency.safeTransfer(ICyberCity(cybercity).feeAddress(), pFee);
 
         // Send remaining to creator
-        paymentToken.safeTransfer(CyberSpawnNft.ownerOf(_tokenId), winningBid - pFee);
+        currency.safeTransfer(CyberSpawnNft.ownerOf(_tokenId), winningBid - pFee);
 
         // Transfer the token to the winner
         CyberSpawnNft.safeTransferFrom(CyberSpawnNft.ownerOf(_tokenId), winner, _tokenId);
@@ -309,7 +300,7 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         // refund existing top bidder if found
         HighestBid storage highestBid = highestBids[_tokenId];
         if (highestBid.bidder != address(0)) {
-            paymentToken.safeTransfer(highestBid.bidder, highestBid.bid);
+            currency.safeTransfer(highestBid.bidder, highestBid.bid);
 
             // Clear up highest bid
             delete highestBids[_tokenId];
@@ -420,19 +411,6 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
         emit UpdateMinBidIncrement(_minBidIncrement);
     }
 
-
-    /**
-     @notice Method for updating the access controls contract used by the NFT
-     @dev Only admin
-     @param _accessControl Address of the new access controls contract (Cannot be zero address)
-     */
-    function updateAccessControl(CyberSpawnAccessControl _accessControl) external onlyAdmin {
-        require(address(_accessControl) != address(0), "NFTAuction.updateAccessControls: Zero Address");
-
-        accessControl = _accessControl;
-        emit UpdateAccessControls(address(_accessControl));
-    }
-
     /**
      @notice Method for updating platform fee
      @dev Only admin
@@ -441,18 +419,6 @@ contract CyberSpawnNFTAuction is Context, ReentrancyGuard {
     function updatePlatformFee(uint256 _platformFee) external onlyAdmin {
         platformFee = _platformFee;
         emit UpdatePlatformFee(_platformFee);
-    }
-
-    /**
-     @notice Method for updating platform fee address
-     @dev Only admin
-     @param _platformFeeRecipient address the address to sends the funds to
-     */
-    function updatePlatformFeeRecipient(address _platformFeeRecipient) external onlyAdmin {
-        require(_platformFeeRecipient != address(0), "NFTAuction.updatePlatformFeeRecipient: Zero address");
-
-        platformFeeRecipient = _platformFeeRecipient;
-        emit UpdatePlatformFeeRecipient(_platformFeeRecipient);
     }
 
     ///////////////
